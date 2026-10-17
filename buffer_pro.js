@@ -1099,8 +1099,8 @@ function _montarAbaSala() {
         <button onclick="BP.tv()" class="bg-sidebar text-white text-xs font-bold py-2 px-4 rounded shadow flex items-center gap-2"><i data-lucide="tv" class="w-4 h-4"></i> Modo TV</button>
       </div></div>
     <div id="bp-kpis" class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4"></div>
-    <div class="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
-      <div class="space-y-4">
+    <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
+      <div class="space-y-4 min-w-0">
         <div class="relative bg-[#0b1220] rounded-xl overflow-hidden shadow" style="height:640px">
           <div id="bp-3d" class="absolute inset-0"></div>
           <div id="bp-tip" class="bp-tip hidden absolute pointer-events-none bg-white/95 rounded-lg shadow-xl p-3 text-xs max-w-xs z-10"></div>
@@ -1108,7 +1108,7 @@ function _montarAbaSala() {
         </div>
         <div class="bg-white rounded-xl border p-4"><div class="text-xs font-black uppercase text-sidebar mb-2">Mapa da sala (vista de cima)</div><div id="bp-mapa" class="overflow-auto"></div></div>
       </div>
-      <div class="space-y-4">
+      <div class="space-y-4 min-w-0">
         <div class="bg-white rounded-xl border p-4"><div class="text-xs font-black uppercase text-sidebar mb-2">Próximos a sair</div><div id="bp-prox"></div></div>
         <div class="bg-white rounded-xl border p-4"><div class="text-xs font-black uppercase text-[#c81e1e] mb-2">Quebras de FIFO</div><div id="bp-bloq"></div></div>
         <div class="bg-white rounded-xl border p-4"><div class="text-xs font-black uppercase text-gray-500 mb-2">Sem vaga</div><div id="bp-semvaga"></div></div>
@@ -1201,7 +1201,7 @@ function renderSalaTab() {
     card('Paletes no buffer', k.mags, 'text-tpv') + card('IM hoje', k.hojeIM, 'text-orange-600') + card('IM atrasada', k.atras, 'text-[#c81e1e]') + card('Aging crítico', k.crit, 'text-[#c81e1e]', '≥ ' + AGING_DIAS_CRITICO + ' dias');
   const ord = paletesRetirada(oc).slice(0, 8);
   $('bp-prox').innerHTML = ord.length ? ord.map(x => `<div class="flex items-center gap-2 py-1 border-b last:border-0 text-xs"><span class="font-mono font-black w-16 whitespace-nowrap text-sidebar">${esc(x.vaga || '—')}</span>
-    <span class="flex-1"><b>${esc(x.op)}</b> ${esc(x.modelo || '')} <span class="text-gray-400">· ${fQ(x.q)} pl.</span></span><span class="text-gray-500">${esc(x.dataIMtxt || 's/ plano')}</span></div>`).join('') : '<div class="text-xs text-gray-400">Buffer vazio.</div>';
+    <span class="flex-1 min-w-0 break-words"><b>${esc(x.op)}</b> ${esc(x.modelo || '')} <span class="text-gray-400">· ${fQ(x.q)} pl.</span></span><span class="text-gray-500 shrink-0">${esc(x.dataIMtxt || 's/ plano')}</span></div>`).join('') : '<div class="text-xs text-gray-400">Buffer vazio.</div>';
   $('bp-bloq').innerHTML = bl.length ? bl.slice(0, 8).map(x => `<div class="text-xs py-1 border-b last:border-0"><span class="font-mono font-black text-[#c81e1e]">${esc(x.vaga)}</span> OP ${esc(x.op)} — IM ${esc(x.dataIMtxt || 's/ plano')}</div>`).join('') + (bl.length > 8 ? `<div class="text-[10px] text-gray-400">+${bl.length - 8}</div>` : '') : '<div class="text-xs text-green-700 font-bold">Nenhuma — fila FIFO perfeita.</div>';
   renderMapa2D($('bp-mapa'), oc);
   $('bp-semvaga').innerHTML = oc.semVaga.length ? oc.semVaga.slice(0, 10).map(x => `<div class="flex items-center gap-2 text-xs py-1 border-b last:border-0"><span class="flex-1 font-mono">${esc(x.lpn)}</span><b>${esc(x.op)}</b>

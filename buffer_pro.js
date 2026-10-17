@@ -752,6 +752,7 @@ function paletesRetirada(oc) {
   return out;
 }
 async function gravarVaga(lpn, vaga, op, auto) {
+  _registrarUso(lpn, vaga, op);
   dbData.vagas[lpn] = { vaga: vaga || null, op: op || '', em: Date.now(), por: usuarioLogado ? usuarioLogado.usuario : '—', auto: !!auto };
 }
 /* limpa registros de LPN que já saíram há mais de 30 dias (arquivo leve) */
@@ -1091,7 +1092,10 @@ function _montarAbaSala() {
       <h2 class="text-2xl font-bold text-sidebar flex items-center"><i data-lucide="box" class="mr-2 text-tpv"></i> Sala do Buffer — estacionamento FIFO</h2>
       <div class="flex flex-wrap gap-2">
         <select id="bp-cor" onchange="BP.sala3d.atualizar(true);BP.renderSala()" class="border rounded text-xs font-bold px-2 py-2 bg-white">
-          <option value="im">Cor: dia da IM</option><option value="aging">Cor: tempo no buffer</option><option value="modelo">Cor: modelo</option></select>
+          <option value="im">Cor: dia da IM</option><option value="aging">Cor: tempo no buffer</option><option value="horas">Cor: envelhecimento (horas)</option><option value="modelo">Cor: modelo</option></select>
+        <div class="flex items-center border rounded bg-white shadow-sm"><i data-lucide="search" class="w-3.5 h-3.5 ml-2 text-gray-400"></i>
+          <input id="bp-busca" placeholder="Buscar OP ou LPN + Enter" onkeydown="if(event.key==='Enter')BP.buscarPalete(this.value);if(event.key==='Escape'){this.value='';BP.buscarPalete('')}" class="text-xs font-bold px-2 py-2 w-48 outline-none rounded">
+          <button onclick="document.getElementById('bp-busca').value='';BP.buscarPalete('')" title="Limpar busca" class="px-2 text-gray-400 hover:text-gray-700">&times;</button></div>
         <button onclick="BP.abrir3DTela()" class="${bt} flex items-center gap-1"><i data-lucide="maximize" class="w-3.5 h-3.5"></i> Vista 3D (tela cheia)</button>
         <button onclick="BP.sala3d.vista('topo')" class="${bt}">Vista de cima</button>
         <button onclick="BP.alocarSemVaga()" class="${bt}">Alocar sem vaga</button>
@@ -1099,6 +1103,7 @@ function _montarAbaSala() {
         <button onclick="BP.editarLayout()" class="${bt}">Layout</button>
         <button onclick="BP.tv()" class="bg-sidebar text-white text-xs font-bold py-2 px-4 rounded shadow flex items-center gap-2"><i data-lucide="tv" class="w-4 h-4"></i> Modo TV</button>
       </div></div>
+    <div id="bp-alerta-h"></div>
     <div id="bp-kpis" class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4"></div>
     <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
       <div class="space-y-4 min-w-0">
@@ -1126,6 +1131,7 @@ function corHex(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charC
 function corPalete(its) {
   const m = modoCor();
   if (m === 'modelo') return corHex(its[0].modelo || its[0].op);
+  if (m === 'horas') return corHoras(Math.max(...its.map(horasPalete)));
   if (m === 'aging') { const d = Math.max(...its.map(x => x.dias || 0)); return d >= AGING_DIAS_CRITICO ? CORES_AG[2][0] : d >= AGING_DIAS_ATENCAO ? CORES_AG[1][0] : CORES_AG[0][0]; }
   const h = new Date(); h.setHours(0, 0, 0, 0);
   const k = Math.min(...its.map(x => x.dataIM == null ? Infinity : x.dataIM));
@@ -1135,6 +1141,8 @@ function corPalete(its) {
 }
 function legendaHTML() {
   const m = modoCor(), l = m === 'aging' ? CORES_AG : m === 'im' ? CORES_IM : null;
+  if (m === 'horas') return `<span class="flex items-center gap-1">0 h <span style="background:linear-gradient(90deg,${corHoras(0)},${corHoras(alertaH() / 2)},${corHoras(alertaH())})" class="inline-block w-24 h-3 rounded-sm"></span> ${alertaH()} h ou mais</span>` +
+    '<span class="flex items-center gap-1"><span style="background:#22d3ee" class="inline-block w-3 h-3 rounded-full"></span>Próximo a sair</span>';
   return (l ? l.map(([c, t]) => `<span class="flex items-center gap-1"><span style="background:${c}" class="inline-block w-3 h-3 rounded-sm"></span>${t}</span>`).join('') : '<span>Cada modelo tem uma cor</span>') +
     '<span class="flex items-center gap-1"><span style="background:#22d3ee" class="inline-block w-3 h-3 rounded-full"></span>Próximo a sair</span>';
 }
@@ -1200,6 +1208,7 @@ function renderSalaTab() {
   const card = (t, v, c, s) => `<div class="bg-white rounded-xl border p-3"><div class="text-[10px] font-black uppercase text-gray-500">${t}</div><div class="text-2xl font-black ${c}">${v}</div>${s ? `<div class="text-[10px] text-gray-400 font-bold">${s}</div>` : ''}</div>`;
   $('bp-kpis').innerHTML = card('Ocupação', k.pct + '%', k.pct > 90 ? 'text-[#c81e1e]' : 'text-sidebar', k.ocup + ' de ' + k.tot + ' vagas') + card('Vagas livres', k.livres, 'text-green-700') +
     card('Paletes no buffer', k.mags, 'text-tpv') + card('IM hoje', k.hojeIM, 'text-orange-600') + card('IM atrasada', k.atras, 'text-[#c81e1e]') + card('Aging crítico', k.crit, 'text-[#c81e1e]', '≥ ' + AGING_DIAS_CRITICO + ' dias');
+  _renderAlertaHoras(oc);
   const ord = paletesRetirada(oc).slice(0, 8);
   $('bp-prox').innerHTML = ord.length ? ord.map(x => `<div class="flex items-center gap-2 py-1 border-b last:border-0 text-xs"><span class="font-mono font-black w-16 whitespace-nowrap text-sidebar">${esc(x.vaga || '—')}</span>
     <span class="flex-1 min-w-0 break-words"><b>${esc(x.op)}</b> ${esc(x.modelo || '')} <span class="text-gray-400">· ${fQ(x.q)} pl.</span></span><span class="text-gray-500 shrink-0">${esc(x.dataIMtxt || 's/ plano')}</span></div>`).join('') : '<div class="text-xs text-gray-400">Buffer vazio.</div>';
@@ -1222,7 +1231,9 @@ function abrirTV() {
         <div id="bp-tv-kpis" class="flex-1 grid grid-cols-6 gap-3"></div>
         <div class="text-right"><div id="bp-tv-hora" class="text-3xl font-black font-mono"></div><div id="bp-tv-data" class="text-xs text-white/50 font-bold"></div></div>
         <button onclick="BP.fecharTV()" class="text-white/40 hover:text-white text-2xl">&times;</button></div>
-      <div class="flex-1 grid grid-cols-[1fr_420px] min-h-0">
+      <div class="flex-1 grid grid-cols-[1fr_420px] min-h-0 relative">
+        <div id="bp-tv-pag" class="hidden absolute inset-0 z-20 bg-[#060b16] p-8 overflow-hidden"></div>
+        <div id="bp-tv-dots" class="absolute right-6 bottom-4 z-30 flex gap-2"></div>
         <div class="relative"><div id="bp-tv-3d" class="absolute inset-0"></div><div id="bp-tv-leg" class="absolute left-6 bottom-6 text-sm flex gap-4 bg-black/60 rounded-lg px-4 py-2"></div></div>
         <div class="border-l border-white/10 p-5 overflow-hidden flex flex-col gap-5">
           <div><div class="text-sm font-black uppercase tracking-widest text-sky-300 mb-2">Próximos a sair</div><div id="bp-tv-prox"></div></div>
@@ -1233,7 +1244,10 @@ function abrirTV() {
   t.classList.remove('hidden');
   try { if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
   sala3d.montarEm($('bp-tv-3d'), 'tv');
+  _tvPag = 0;
   renderTV();
+  clearInterval(abrirTV._pag);
+  abrirTV._pag = setInterval(() => { if (!tvAberta()) return clearInterval(abrirTV._pag); _tvPag = (_tvPag + 1) % TV_PAGINAS.length; renderTV(); }, TV_TROCA_MS);
   clearInterval(abrirTV._rel);
   abrirTV._rel = setInterval(() => { if (!tvAberta()) return clearInterval(abrirTV._rel); const d = new Date(); $('bp-tv-hora').textContent = d.toLocaleTimeString('pt-BR'); $('bp-tv-data').textContent = d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' }); }, 1000);
 }
@@ -1257,8 +1271,11 @@ function renderTV() {
   if (bl.length) al.push(bl.length + ' palete(s) bloqueando a fila FIFO');
   if (k.atras) al.push(k.atras + ' palete(s) com IM atrasada');
   if (k.crit) al.push(k.crit + ' palete(s) há ' + AGING_DIAS_CRITICO + '+ dias no buffer');
+  const velhos = paletesVelhos(oc).length;
+  if (velhos) al.push(velhos + ' palete(s) parado(s) há mais de ' + alertaH() + ' h');
   if (k.semVaga) al.push(k.semVaga + ' palete(s) sem vaga');
   if (k.pct > 90) al.push('Sala acima de 90%');
+  _renderPaginasTV(oc, k, al);
   $('bp-tv-alert').innerHTML = al.length ? al.map(t => `<div class="py-2 text-lg font-bold text-red-300 border-b border-white/10">● ${esc(t)}</div>`).join('') : '<div class="text-lg font-bold text-green-400">Tudo em ordem ✓</div>';
 }
 
@@ -1277,7 +1294,7 @@ function renderTV() {
 const sala3d = (function () {
   let ok3d = null, renderer, scene, camera, controls, alvoEl, ro, modo = 'normal', vistaAtual = '3d';
   let gEst = null, gDin = null, sigEst = '', sigDin = '', picks = [], grupos = {}, pulsos = [], foco = null, descartar = [];
-  let ultimaInteracao = 0, interagindo = false, voo = null, escolhaSt = null, hlMesh = null, setas = [];
+  let ultimaInteracao = 0, interagindo = false, voo = null, escolhaSt = null, hlMesh = null, setas = [], destaque = null;
   const teclas = {};
   const T = {}, M = {}, G = {};
   const MW = 0.38, MD = 0.46, MH = 0.56, PAL_H = 0.144;
@@ -1749,8 +1766,23 @@ const sala3d = (function () {
         luz.target.position.set(v.x, 0, v.z); gDin.add(luz); gDin.add(luz.target);
       }
     }
-    // escolha de vaga: sala um pouco mais escura em volta da vaga indicada; nos outros modos, luz normal
-    const escuro = modo === 'escolha' && escolhaSt && escolhaSt.vaga && oc.porId[escolhaSt.vaga] ? 0.5 : 1;
+    // busca rápida: o palete achado fica igual à vaga indicada no "Guardar o palete" (seta, feixe, foco de luz)
+    const vD = modo !== 'escolha' && modo !== 'tv' && destaque && oc.porId[destaque];
+    if (vD) {
+      const its = oc.mapa[vD.id] || [];
+      const base = new THREE.Group(); base.position.set(vD.x, 0, vD.z); gDin.add(base);
+      const a = new THREE.Mesh(G.anel, new THREE.MeshBasicMaterial({ color: '#4ade80', transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+      a.rotation.x = -Math.PI / 2; a.position.y = 0.014; base.add(a); pulsos.push(a);
+      const f = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 3.2, 32, 1, true), new THREE.MeshBasicMaterial({ color: '#4ade80', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+      f.position.y = 1.6; base.add(f);
+      const seta = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.5, 24), new THREE.MeshBasicMaterial({ color: '#4ade80' }));
+      seta.rotation.x = Math.PI; seta.userData.y0 = 3.0; seta.position.y = 3.0; base.add(seta); setas.push(seta);
+      const sp = rotulo('PALETE AQUI', vD.id, its[0] ? 'OP ' + its[0].op : '', '#22c55e', 1.05); sp.position.set(0, 3.9, 0); base.add(sp);
+      const luz = new THREE.SpotLight('#ffffff', 0.7, 0, 0.32, 0.5, 1); luz.position.set(vD.x, 6, vD.z);
+      luz.target.position.set(vD.x, 0, vD.z); gDin.add(luz); gDin.add(luz.target);
+    }
+    // escolha de vaga / busca: sala um pouco mais escura em volta da vaga indicada; nos outros modos, luz normal
+    const escuro = (modo === 'escolha' && escolhaSt && escolhaSt.vaga && oc.porId[escolhaSt.vaga]) || vD ? 0.5 : 1;
     M.amb.intensity = 0.25 * escuro; M.hemi.intensity = 0.6 * escuro; M.sol.intensity = 0.85 * escuro;
     // TV do lado de fora mostrando a sala
     const k = _kpisSala(oc);
@@ -1780,7 +1812,7 @@ const sala3d = (function () {
   }
   function enquadrarBase() { const b = posicoesVista(vistaAtual); camera.position.copy(b.p); controls.target.copy(b.a); controls.update();
     const GR = gradeSala(dbData.sala); M.sol.target.position.set(GR.largura / 2, 0, GR.comprimento / 2); M.sol.position.set(GR.largura / 2 - 7, 22, GR.comprimento / 2 + 12); }
-  const assinaturaDin = () => { const oc = ocupacao(); return JSON.stringify([modoCor(), modo, escolhaSt ? escolhaSt.lpn + '|' + escolhaSt.vaga : '', ordemRetirada(oc).slice(0, 3).map(x => x.vaga), _kpisSala(oc).pct,
+  const assinaturaDin = () => { const oc = ocupacao(); return JSON.stringify([modoCor(), modo, escolhaSt ? escolhaSt.lpn + '|' + escolhaSt.vaga : '', destaque, modoCor() === 'horas' ? Math.floor(Date.now() / 600000) : 0, ordemRetirada(oc).slice(0, 3).map(x => x.vaga), _kpisSala(oc).pct,
     Object.entries(oc.mapa).filter(([, a]) => a.length).map(([k, a]) => k + ':' + a.map(x => x.lpn + '|' + x.qtd + '|' + x.dataIM + '|' + x.dias + '|' + x.modelo).join(','))]); };
 
   return {
@@ -1820,6 +1852,17 @@ const sala3d = (function () {
       foco = { id, t: 0, grupo: grupos[id] || null };
       if (foco.grupo) feixeEm(id); else foco = null;
     },
+    /* busca rápida: realça a vaga (null = tira o realce) e leva a câmera até ela */
+    destacar(id) {
+      destaque = id || null;
+      if (!renderer) return;
+      this.atualizar(true);
+      const v = id && ocupacao().porId[id]; if (!v) return;
+      const alvo = new THREE.Vector3(v.x, 0.6, v.z);
+      voo = { t: 0, p0: camera.position.clone(), p1: new THREE.Vector3(v.x - 1.2, 5.2, v.z + 5.6), a0: controls.target.clone(), a1: alvo };
+      ultimaInteracao = Date.now();
+    },
+    destacada: () => destaque,
     /* troca a vaga indicada sem remontar (null = sai da escolha) */
     escolha(st) { escolhaSt = st || null; if (renderer && modo === 'escolha') this.atualizar(true); }
   };
@@ -1956,7 +1999,7 @@ function _statusBackup() {
               removido (excluído da lista; volta se cadastrar de novo)     */
 const ABAS = [['LEITURA', 'Leitura de Palete'], ['RELATORIO', 'Relatório de Leituras'], ['AGING', 'Buffer × Plano IM'],
   ['DASH', 'Dashboards'], ['SALA', 'Sala do Buffer 3D'], ['MES', 'Plano de Produção']];
-const nomeAba = id => (ABAS.find(a => a[0] === id) || [id, id === 'PERM' ? 'Acessos e Logins' : id])[1];
+const nomeAba = id => (ABAS.find(a => a[0] === id) || [id, id === 'PERM' ? 'Acessos e Logins' : id === 'ESTRAT' ? 'Estratégia' : id])[1];
 const PERFIS_EDIT = ['Guardião', 'Operador'];
 const PERFIS_PADRAO = () => ({ 'Guardião': ABAS.map(a => a[0]), 'Operador': ['LEITURA', 'SALA'] });
 if (!PERFIS.includes('Operador')) PERFIS.push('Operador');      // senão o original troca "Operador" por "Guardião"
@@ -1982,9 +2025,9 @@ const regDe = mat => (dbData.usuarios || []).find(x => String(x.usuario) === Str
 /* abas liberadas para um usuário (registro mais novo do banco, que muda na sincronização) */
 function abasDe(u) {
   if (!u && !usuarioLogado) return [];
-  if (!u && ehKey()) return ABAS.map(a => a[0]).concat('PERM');
+  if (!u && ehKey()) return ABAS.map(a => a[0]).concat('PERM', 'ESTRAT');
   u = u || regDe(usuarioLogado.usuario) || usuarioLogado;
-  if (u.perfil === 'Key User') return ABAS.map(a => a[0]).concat('PERM');
+  if (u.perfil === 'Key User') return ABAS.map(a => a[0]).concat('PERM', 'ESTRAT');
   if (u.bloqueado) return [];
   return Array.isArray(u.abas) ? u.abas.filter(a => ABAS.some(x => x[0] === a)) : (acessos().perfis[u.perfil] || acessos().perfis['Guardião']);   // perfil antigo (ex.: Alimentador) = Guardião
 }
@@ -1995,7 +2038,7 @@ const bloqueado = () => !!usuarioLogado && !ehKey() && !!(regDe(usuarioLogado.us
 function _aplicarMenu() {
   if (!usuarioLogado) return;
   const lib = new Set(abasDe());
-  ABAS.concat([['PERM']]).forEach(([id]) => { const n = $('nav-' + id); if (n) n.style.display = lib.has(id) ? '' : 'none'; });
+  ABAS.concat([['PERM'], ['ESTRAT']]).forEach(([id]) => { const n = $('nav-' + id); if (n) n.style.display = lib.has(id) ? '' : 'none'; });
   const nav = document.querySelector('aside nav'); if (!nav) return;
   let tit = null, algum = false;
   const fechar = () => { if (tit) tit.style.display = algum ? '' : 'none'; };
@@ -2021,6 +2064,7 @@ mudarAba = function (abaId) {
   }
   _mudarAbaPerm(abaId);
   if (abaId === 'PERM') renderPerm();
+  if (abaId === 'ESTRAT') renderEstrat();
 };
 function _telaBloqueio(on, txt) {
   let b = $('bp-bloqueio');
@@ -2258,6 +2302,380 @@ window.BP = { fecharModal: _fecharModal, aplicarVinculo, trocarVaga, moverPara, 
   buscaPerm: v => { _permBusca = v; renderPerm(); const i = document.querySelector('#aba-PERM input[placeholder^="Buscar"]'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } },
   filtroLog: (k, v) => { if (!k) _logFiltro = { usuario: '', acao: '', de: '', ate: '', txt: '' }; else _logFiltro[k] = v || ''; renderPermLog(); } };
 
+/* ═════════════════ [7] v8.3 — ALERTA DE HORAS · TV EM PÁGINAS · BUSCA · ESTRATÉGIA ═════════════
+   · Alerta de envelhecimento: palete parado há mais de X horas (sala.alertaHoras,
+     padrão 24 h, o Key User muda na aba Estratégia). Cor "envelhecimento (horas)"
+     vai do verde ao vermelho aos poucos.
+   · Modo TV troca sozinho a cada 20 s: sala 3D → indicadores → próximos a sair.
+   · Busca rápida na aba da sala: OP ou LPN + Enter leva a câmera até o palete.
+   · Aba Estratégia (só Key User): mapa de calor de uso, relatório do turno e
+     previsão de lotação.
+   · Histórico de uso das vagas: dbData.usoVagas (append-only por id, igual às
+     leituras; vai para sistema/outros.json). Guarda 120 dias.                  */
+const ALERTA_H_PADRAO = 24;
+const alertaH = () => Math.max(1, Number(dbData.sala && dbData.sala.alertaHoras) || ALERTA_H_PADRAO);
+const horasPalete = it => it.ts ? Math.max(0, (Date.now() - it.ts) / 3600000) : 0;
+/* verde (0 h) → amarelo (metade) → vermelho (X h ou mais), sem degraus */
+function corHoras(h) { const t = Math.min(1, Math.max(0, h / alertaH())); return 'hsl(' + Math.round(140 * (1 - t)) + ',75%,' + Math.round(45 + 5 * (1 - t)) + '%)'; }
+const fH = h => h < 48 ? Math.floor(h) + ' h' : Math.floor(h / 24) + ' d ' + Math.floor(h % 24) + ' h';
+/* paletes (1 por vaga) parados há mais de X horas, do mais velho para o mais novo */
+function paletesVelhos(oc) {
+  oc = oc || ocupacao();
+  const lim = alertaH();
+  return [...Object.values(oc.mapa).flat(), ...oc.semVaga].map(x => Object.assign({}, x, { h: horasPalete(x) }))
+    .filter(x => x.h >= lim).sort((a, b) => b.h - a.h);
+}
+function _renderAlertaHoras(oc) {
+  const el = $('bp-alerta-h'); if (!el) return;
+  const v = paletesVelhos(oc);
+  el.innerHTML = v.length ? `<div class="mb-4 rounded-xl border-2 border-[#c81e1e] bg-red-50 p-3 flex flex-wrap items-center gap-3">
+      <i data-lucide="alarm-clock" class="w-5 h-5 text-[#c81e1e]"></i>
+      <div class="text-sm font-black text-[#c81e1e]">${v.length} palete(s) parado(s) há mais de ${alertaH()} h</div>
+      <div class="flex flex-wrap gap-2">${v.slice(0, 8).map(x => `<button onclick="BP.buscarPalete('${esc(x.lpn)}')" class="text-xs font-bold bg-white border border-red-300 rounded px-2 py-1 hover:bg-red-100"><span class="font-mono">${esc(x.vaga || 'sem vaga')}</span> · OP ${esc(x.op)} · ${fH(x.h)}</button>`).join('')}${v.length > 8 ? `<span class="text-xs text-gray-500 self-center">+${v.length - 8}</span>` : ''}</div></div>` : '';
+  icones();
+}
+/* aviso no canto da tela quando um palete passa do limite (uma vez por palete) */
+const _avisados = new Set();
+function _conferirVelhos() {
+  if (!usuarioLogado || !_iniciado || bloqueado() || guardarAberto()) return;
+  const novos = paletesVelhos().filter(x => !_avisados.has(x.lpn));
+  if (!novos.length) return;
+  const primeira = !_conferirVelhos._ok; _conferirVelhos._ok = true;
+  novos.forEach(x => _avisados.add(x.lpn));
+  if (primeira) return;                       // ao abrir o sistema não avisa os que já estavam velhos (o aviso fica na sala)
+  msgTopo('⏰ ' + (novos.length === 1 ? 'Palete ' + (novos[0].vaga || novos[0].lpn) + ' (OP ' + novos[0].op + ')' : novos.length + ' paletes') + ' parado(s) há mais de ' + alertaH() + ' h no buffer.', true);
+}
+
+/* ── Modo TV em páginas: troca sozinho a cada 20 s ── */
+const TV_PAGINAS = ['Sala 3D', 'Indicadores', 'Próximos a sair'];
+const TV_TROCA_MS = 20000;
+let _tvPag = 0;
+function _renderPaginasTV(oc, k, al) {
+  const pag = $('bp-tv-pag'), dots = $('bp-tv-dots'); if (!pag) return;
+  dots.innerHTML = TV_PAGINAS.map((t, i) => `<span class="px-3 py-1 rounded-full text-xs font-black ${i === _tvPag ? 'bg-sky-400 text-[#060b16]' : 'bg-white/10 text-white/50'}">${t}</span>`).join('');
+  if (_tvPag === 0) { pag.classList.add('hidden'); return; }
+  pag.classList.remove('hidden');
+  if (_tvPag === 1) {
+    const c = (t, v, cor, sub) => `<div class="bg-white/5 rounded-2xl p-6 flex flex-col justify-center"><div class="text-lg font-black uppercase tracking-widest text-white/50">${t}</div><div class="text-8xl font-black ${cor} leading-none my-2">${v}</div>${sub ? `<div class="text-xl font-bold text-white/50">${sub}</div>` : ''}</div>`;
+    pag.innerHTML = `<div class="h-full flex flex-col gap-6"><div class="grid grid-cols-3 gap-6 flex-1">
+        ${c('Ocupação', k.pct + '%', k.pct > 90 ? 'text-red-400' : 'text-white', k.ocup + ' de ' + k.tot + ' vagas')}${c('Vagas livres', k.livres, 'text-green-400')}${c('Paletes no buffer', k.mags, 'text-sky-300')}
+        ${c('IM hoje', k.hojeIM, 'text-orange-300')}${c('IM atrasada', k.atras, 'text-red-400')}${c('Parados > ' + alertaH() + ' h', paletesVelhos(oc).length, 'text-red-400')}</div>
+      <div class="bg-white/5 rounded-2xl px-6 py-4">${al.length ? al.map(t => `<div class="text-2xl font-bold text-red-300 py-1">● ${esc(t)}</div>`).join('') : '<div class="text-2xl font-bold text-green-400">Tudo em ordem ✓</div>'}</div></div>`;
+  } else {
+    const ord = paletesRetirada(oc).slice(0, 10);
+    pag.innerHTML = `<div class="text-3xl font-black uppercase tracking-widest text-sky-300 mb-4">Próximos a sair · FIFO pela data da IM</div>
+      ${ord.length ? '<div class="grid grid-cols-2 gap-x-8">' + ord.map((x, i) => `<div class="flex items-center gap-5 py-3 border-b border-white/10 ${i === 0 ? 'text-sky-200' : ''}">
+        <span class="text-3xl font-black text-white/30 w-10">${i + 1}</span><span class="font-mono font-black text-5xl w-56 whitespace-nowrap">${esc(x.vaga || '—')}</span>
+        <div class="flex-1 min-w-0"><div class="text-2xl font-black">OP ${esc(x.op)}</div><div class="text-lg text-white/60 truncate">${esc(x.modelo || '')} · ${fQ(x.q)} placas</div></div>
+        <div class="text-right"><div class="text-xl font-bold">${esc(x.linhaIM || '—')}</div><div class="text-lg text-white/50">${esc(x.dataIMtxt || 's/ plano')}</div></div></div>`).join('') + '</div>'
+        : '<div class="text-3xl text-white/40">Buffer vazio</div>'}`;
+  }
+}
+
+/* ── busca rápida: OP ou LPN → câmera vai até o palete ── */
+function buscarPalete(txt) {
+  txt = String(txt || '').trim().toUpperCase();
+  if (!txt) { sala3d.destacar(null); return; }
+  if ($('aba-SALA') && !$('aba-SALA').classList.contains('active')) mudarAba('SALA');
+  const oc = ocupacao(), todos = [...Object.values(oc.mapa).flat(), ...oc.semVaga];
+  const op = /^\d{7}/.test(txt) ? txt.slice(0, 7) : null;
+  let achados = todos.filter(x => String(x.lpn).toUpperCase() === txt);
+  if (!achados.length && op) achados = todos.filter(x => x.op === op);
+  if (!achados.length && txt.length >= 4) achados = todos.filter(x => String(x.lpn).toUpperCase().includes(txt));
+  if (!achados.length) { sala3d.destacar(null); msgTopo('Nenhum palete com "' + txt + '" dentro do buffer.', true); return; }
+  achados.sort((a, b) => chaveIM(a) - chaveIM(b) || a.ts - b.ts);
+  const x = achados[0];
+  if ($('bp-busca') && !$('bp-busca').value) $('bp-busca').value = txt;
+  if (!x.vaga) { sala3d.destacar(null); msgTopo('LPN ' + x.lpn + ' (OP ' + x.op + ') está no buffer, mas SEM VAGA. Use "Alocar sem vaga".', true); return; }
+  setTimeout(() => sala3d.destacar(x.vaga), $('bp-3d') && $('bp-3d').firstChild ? 0 : 900);
+  const outras = [...new Set(achados.slice(1).map(a => a.vaga).filter(Boolean))];
+  msgTopo('Palete em ' + x.vaga + ' · OP ' + x.op + (outras.length ? ' · a OP também está em: ' + outras.slice(0, 5).join(', ') : ''));
+}
+
+/* ── histórico de uso das vagas (para o mapa de calor) ── */
+const USO_DIAS = 120;
+function _registrarUso(lpn, vaga, op) {
+  if (!Array.isArray(dbData.usoVagas)) dbData.usoVagas = [];
+  const ant = dbData.vagas[lpn] && dbData.vagas[lpn].vaga;
+  if ((vaga || null) === (ant || null)) return;
+  dbData.usoVagas.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), lpn, op: op || '', vaga: vaga || null, de: ant || null, ts: Date.now() });
+  const lim = Date.now() - USO_DIAS * DIA;
+  if (dbData.usoVagas.length && dbData.usoVagas[0].ts < lim) dbData.usoVagas = dbData.usoVagas.filter(u => u.ts >= lim);
+}
+/* mescla entre PCs: append-only por id (ninguém perde o histórico do outro PC) */
+const _mesclarUsoOrig = _mesclarBanco;
+_mesclarBanco = function (remoto) {
+  const local = dbData, out = _mesclarUsoOrig(remoto), m = {};
+  (remoto.usoVagas || []).forEach(u => { m[u.id] = u; });
+  (local.usoVagas || []).forEach(u => { if (!m[u.id]) m[u.id] = u; });
+  out.usoVagas = Object.values(m).sort((a, b) => a.ts - b.ts);
+  return out;
+};
+/* uso de cada vaga no período: nº de paletes guardados e horas ocupadas.
+   Paletes que já estavam na vaga antes do histórico existir contam a partir da entrada. */
+function usoPorVaga(dias) {
+  const fim = Date.now(), ini = fim - dias * DIA, r = {};
+  const add = (vaga, a, b, conta) => {
+    if (!vaga) return; const x = r[vaga] || (r[vaga] = { paletes: 0, horas: 0 });
+    const s = Math.max(a, ini), e = Math.min(b, fim);
+    if (e > s) x.horas += (e - s) / 3600000;
+    if (conta && a >= ini) x.paletes++;
+  };
+  const porLpn = {};
+  (dbData.usoVagas || []).forEach(u => (porLpn[u.lpn] = porLpn[u.lpn] || []).push(u));
+  Object.values(porLpn).forEach(l => {
+    l.sort((a, b) => a.ts - b.ts);
+    l.forEach((u, i) => { const prox = l[i + 1]; if (u.vaga) add(u.vaga, u.ts, prox ? prox.ts : fim, !u.de); });
+  });
+  // paletes que estão na sala e não têm histórico ainda
+  const dentro = bufferAgora();
+  dentro.forEach(it => { if (porLpn[it.lpn]) return; const reg = dbData.vagas[it.lpn]; if (reg && reg.vaga) add(reg.vaga, it.ts || reg.em || fim, fim, true); });
+  return r;
+}
+
+/* ── turnos (para o relatório) — sala.turnos, editável na aba Estratégia ── */
+const TURNOS_PADRAO = [{ nome: '1º turno', ini: '06:00', fim: '14:00' }, { nome: '2º turno', ini: '14:00', fim: '22:00' }, { nome: '3º turno', ini: '22:00', fim: '06:00' }];
+const turnos = () => (Array.isArray(dbData.sala && dbData.sala.turnos) && dbData.sala.turnos.length ? dbData.sala.turnos : TURNOS_PADRAO);
+function janelaTurno(t, dia) {          // dia = 'AAAA-MM-DD' (data em que o turno começa)
+  const [a, m, d] = dia.split('-').map(Number), hm = s => s.split(':').map(Number);
+  const [h1, m1] = hm(t.ini), [h2, m2] = hm(t.fim);
+  const ini = new Date(a, m - 1, d, h1, m1).getTime();
+  let fim = new Date(a, m - 1, d, h2, m2).getTime(); if (fim <= ini) fim += DIA;
+  return { ini, fim };
+}
+function turnoAtual() {
+  const agora = Date.now(), hoje = new Date(), iso = dt => dt.getFullYear() + '-' + p2(dt.getMonth() + 1) + '-' + p2(dt.getDate());
+  const ontem = new Date(agora - DIA);
+  for (const dia of [iso(hoje), iso(ontem)]) for (let i = 0; i < turnos().length; i++) { const j = janelaTurno(turnos()[i], dia); if (agora >= j.ini && agora < j.fim) return { i, dia }; }
+  return { i: 0, dia: iso(hoje) };
+}
+/* números do turno: entradas, saídas, quebras de FIFO e tempo médio no buffer */
+function relatorioTurno(ini, fim) {
+  const ls = _leiturasComTs().filter(l => l.lpn).sort((a, b) => a._ts - b._ts);
+  const ent = [], sai = [], dentro = {}, quebras = [], tempos = [];
+  ls.forEach(l => {
+    const t = _tipoLeitura(l);
+    if (t === 'entrada') {
+      if (l._ts >= ini && l._ts < fim) ent.push(l);
+      dentro[l.lpn] = { op: l.op, ts: l._ts };
+      return;
+    }
+    const d = dentro[l.lpn];
+    if (l._ts >= ini && l._ts < fim) {
+      sai.push(l);
+      if (d) tempos.push((l._ts - d.ts) / 3600000);
+      // quebra de FIFO na saída: saiu antes de outro palete que ia para a IM num dia anterior
+      const k = chaveIM(infoOP(l.op));
+      const antes = Object.entries(dentro).filter(([lpn, x]) => lpn !== l.lpn && chaveIM(infoOP(x.op)) + DIA <= k);
+      if (antes.length) quebras.push({ lpn: l.lpn, op: l.op, ts: l._ts, n: antes.length });
+    }
+    delete dentro[l.lpn];
+  });
+  const porHora = {};
+  for (let t = ini; t < fim; t += 3600000) porHora[new Date(t).getHours()] = { e: 0, s: 0 };
+  ent.forEach(l => { const h = new Date(l._ts).getHours(); if (porHora[h]) porHora[h].e++; });
+  sai.forEach(l => { const h = new Date(l._ts).getHours(); if (porHora[h]) porHora[h].s++; });
+  const soma = a => a.reduce((s, l) => s + (Number(l.qtd) || 0), 0);
+  return { ent, sai, quebras, tempos, porHora, placasE: soma(ent), placasS: soma(sai),
+    medio: tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : null, bloqueiosAgora: bloqueios().length };
+}
+
+/* ── previsão de lotação: paletes de hoje + o que o SMT ainda vai mandar − o que a IM vai puxar ── */
+const PREV_DIAS = 14;
+function previsaoLotacao() {
+  const oc = ocupacao(), k = _kpisSala(oc), cap = k.tot, hoje = _hoje0();
+  const dia = t => Math.max(0, Math.floor((t - hoje) / DIA));           // atrasado conta para hoje
+  // tamanho médio do palete (placas) nos últimos 30 dias de entrada
+  const ult = _leiturasComTs().filter(l => _tipoLeitura(l) === 'entrada' && l._ts > Date.now() - 30 * DIA && Number(l.qtd) > 0);
+  const medioPal = ult.length ? ult.reduce((s, l) => s + Number(l.qtd), 0) / ult.length : (Number(dbData.sala.placasMag) || 50) * 6;
+  const entra = Array(PREV_DIAS).fill(0), sai = Array(PREV_DIAS).fill(0), semIM = { n: 0 };
+  // o que já está dentro sai no dia da IM
+  [...Object.values(oc.mapa).flat(), ...oc.semVaga].forEach(x => { if (x.dataIM != null) { const d = dia(x.dataIM); if (d < PREV_DIAS) sai[d]++; } });
+  // o que o SMT ainda vai mandar (plano SMT com data), sai no dia da IM daquela OP
+  const detalhe = [];
+  (dbData.ops || []).forEach(o => {
+    const dSMT = _dataPlanoObj(o.data); if (!dSMT) return;
+    const falta = (Number(o.total) || 0) - recebidoDaOP(o.numero, 'entrada');
+    if (falta <= 0) return;
+    const d = dia(dSMT.getTime()); if (d >= PREV_DIAS) return;
+    const n = Math.max(1, Math.ceil(falta / medioPal));
+    entra[d] += n;
+    const im = infoOP(o.numero);
+    if (im.dataIM != null) { const di = Math.max(d, dia(im.dataIM)); if (di < PREV_DIAS) sai[di] += n; } else semIM.n += n;
+    detalhe.push({ op: o.numero, modelo: o.modelo || '', dia: d, n, im: im.dataIMtxt || '' });
+  });
+  const ocup = []; let atual = k.ocup + oc.semVaga.length;
+  for (let d = 0; d < PREV_DIAS; d++) { atual = Math.max(0, atual + entra[d] - sai[d]); ocup.push(atual); }
+  const lota = ocup.findIndex(v => v >= cap), alerta = ocup.findIndex(v => v >= cap * 0.9);
+  return { cap, ocup, entra, sai, lota, alerta, medioPal, semIM: semIM.n, detalhe, hoje, agora: k.ocup + oc.semVaga.length };
+}
+
+/* ── a aba Estratégia (só Key User) ── */
+function _montarAbaEstrat() {
+  if ($('aba-ESTRAT')) return;
+  const ref = $('nav-PERM') || $('nav-ACESSOS');
+  if (ref) {
+    const b = document.createElement('button');
+    b.id = 'nav-ESTRAT'; b.className = 'nav-item w-full flex items-center px-6 py-3.5 text-sm text-left outline-none';
+    b.setAttribute('onclick', "mudarAba('ESTRAT')");
+    b.innerHTML = '<i data-lucide="target" class="w-5 h-5 mr-3 opacity-80"></i> Estratégia';
+    ref.parentNode.insertBefore(b, ref.nextSibling);
+  }
+  const main = document.querySelector('#main-app main'); if (!main) return;
+  const d = document.createElement('div');
+  d.id = 'aba-ESTRAT'; d.className = 'tab-content w-full mx-auto max-w-[1500px]';
+  main.appendChild(d);
+}
+let _est = { dias: 30, medida: 'horas', turno: null, dia: null };
+const _graf = {};
+function _grafico(id, cfg) {
+  if (_graf[id]) { try { _graf[id].destroy(); } catch (e) {} }
+  const c = $(id); if (!c || typeof Chart === 'undefined') return;
+  _graf[id] = new Chart(c, cfg);
+}
+const fD = t => { const d = new Date(t); return p2(d.getDate()) + '/' + p2(d.getMonth() + 1); };
+function renderEstrat() {
+  const d = $('aba-ESTRAT'); if (!d) return;
+  if (!ehKey()) { d.innerHTML = '<div class="p-6 text-sm font-bold text-[#c81e1e]">Só o Key User acessa esta aba.</div>'; return; }
+  if (!_est.dia) { const t = turnoAtual(); _est.turno = t.i; _est.dia = t.dia; }
+  const S = dbData.sala, inp = 'border rounded px-2 py-1.5 text-xs font-bold bg-white';
+  d.innerHTML = `
+    <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+      <h2 class="text-2xl font-bold text-sidebar flex items-center"><i data-lucide="target" class="mr-2 text-tpv"></i> Estratégia do Buffer</h2>
+      <div class="flex items-center gap-2 text-xs font-bold text-gray-600">Alerta de palete parado após
+        <input type="number" min="1" max="720" value="${alertaH()}" onchange="BP.salvarAlertaHoras(this.value)" class="${inp} w-20"> horas</div></div>
+    ${_cardP('Previsão de lotação · próximos ' + PREV_DIAS + ' dias', 'trending-up', '<div id="bp-est-prev" class="p-5"></div>')}
+    ${_cardP('Relatório do turno', 'clipboard-check', '<div id="bp-est-turno" class="p-5"></div>', `<div class="ml-auto flex flex-wrap items-center gap-2">
+        <select onchange="BP.estTurno(this.value)" class="${inp}">${turnos().map((t, i) => `<option value="${i}" ${i === _est.turno ? 'selected' : ''}>${esc(t.nome)} (${t.ini}–${t.fim})</option>`).join('')}</select>
+        <input type="date" value="${_est.dia}" onchange="BP.estDia(this.value)" class="${inp}">
+        <button onclick="BP.editarTurnos()" class="${inp} hover:bg-gray-50">Horários</button>
+        <button onclick="BP.imprimirTurno()" class="bg-sidebar text-white text-xs font-bold py-1.5 px-3 rounded flex items-center gap-1"><i data-lucide="printer" class="w-3.5 h-3.5"></i> Imprimir / PDF</button></div>`)}
+    ${_cardP('Mapa de calor de uso das vagas', 'flame', '<div id="bp-est-calor" class="p-5"></div>', `<div class="ml-auto flex items-center gap-2">
+        <select onchange="BP.estCalor('dias',this.value)" class="${inp}">${[7, 30, 90].map(n => `<option value="${n}" ${n === _est.dias ? 'selected' : ''}>Últimos ${n} dias</option>`).join('')}</select>
+        <select onchange="BP.estCalor('medida',this.value)" class="${inp}"><option value="horas" ${_est.medida === 'horas' ? 'selected' : ''}>Horas ocupada</option><option value="paletes" ${_est.medida === 'paletes' ? 'selected' : ''}>Nº de paletes</option></select></div>`)}`;
+  _renderPrevisao(); _renderTurno(); _renderCalor();
+  icones();
+}
+function _renderPrevisao() {
+  const el = $('bp-est-prev'); if (!el) return;
+  const P = previsaoLotacao(), dia = i => fD(P.hoje + i * DIA);
+  const msg = P.lota >= 0 ? `<div class="rounded-lg bg-red-50 border-2 border-[#c81e1e] p-3 text-sm font-black text-[#c81e1e]">⚠ O buffer deve LOTAR em ${dia(P.lota)} (${P.lota === 0 ? 'hoje' : 'daqui a ' + P.lota + ' dia(s)'}) — previsão de ${P.ocup[P.lota]} paletes para ${P.cap} vagas.</div>`
+    : P.alerta >= 0 ? `<div class="rounded-lg bg-orange-50 border-2 border-orange-400 p-3 text-sm font-black text-orange-700">Atenção: acima de 90% em ${dia(P.alerta)} (${P.ocup[P.alerta]} de ${P.cap} vagas).</div>`
+    : `<div class="rounded-lg bg-green-50 border-2 border-green-600 p-3 text-sm font-black text-green-700">Sem risco de lotar nos próximos ${PREV_DIAS} dias (pico de ${Math.max(...P.ocup)} de ${P.cap} vagas).</div>`;
+  el.innerHTML = `${msg}
+    <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 mt-4"><div class="min-w-0" style="height:280px"><canvas id="bp-g-prev"></canvas></div>
+    <div class="text-xs text-gray-600 space-y-1 min-w-0">
+      <div><b>Hoje no buffer:</b> ${P.agora} palete(s) · <b>${P.cap}</b> vagas</div>
+      <div><b>Palete médio:</b> ${fQ(Math.round(P.medioPal))} placas (entradas dos últimos 30 dias)</div>
+      <div><b>Vão entrar:</b> ${P.entra.reduce((a, b) => a + b, 0)} palete(s) (plano SMT com data, saldo que falta)</div>
+      ${P.semIM ? `<div class="text-orange-700 font-bold">${P.semIM} palete(s) previsto(s) sem plano de IM — ficam no buffer até ter plano.</div>` : ''}
+      <div class="text-gray-400 pt-1">Estimativa: OP atrasada conta como hoje; o palete sai no dia da IM da OP; sem plano de IM não sai.</div></div></div>`;
+  _grafico('bp-g-prev', { data: { labels: P.ocup.map((_, i) => dia(i)), datasets: [
+      { type: 'bar', label: 'Paletes previstos', data: P.ocup, backgroundColor: P.ocup.map(v => v >= P.cap ? '#ef4444' : v >= P.cap * 0.9 ? '#f97316' : '#005b9f'), borderRadius: 4, order: 2 },
+      { type: 'line', label: 'Vagas da sala', data: P.ocup.map(() => P.cap), borderColor: '#c81e1e', borderDash: [6, 4], pointRadius: 0, borderWidth: 2, order: 1 },
+      { type: 'line', label: 'Entram', data: P.entra, borderColor: '#22c55e', backgroundColor: '#22c55e', tension: .3, borderWidth: 2, pointRadius: 2, order: 0 },
+      { type: 'line', label: 'Saem (IM)', data: P.sai, borderColor: '#eab308', backgroundColor: '#eab308', tension: .3, borderWidth: 2, pointRadius: 2, order: 0 }] },
+    options: { maintainAspectRatio: false, animation: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }, scales: { y: { beginAtZero: true } } } });
+}
+function _janelaEst() { return janelaTurno(turnos()[_est.turno] || turnos()[0], _est.dia); }
+function _renderTurno() {
+  const el = $('bp-est-turno'); if (!el) return;
+  const j = _janelaEst(), R = relatorioTurno(j.ini, j.fim), t = turnos()[_est.turno] || turnos()[0];
+  const kp = (rot, v, cor, sub) => `<div class="bg-gray-50 rounded-xl border p-3"><div class="text-[10px] font-black uppercase text-gray-500">${rot}</div><div class="text-2xl font-black ${cor}">${v}</div>${sub ? `<div class="text-[10px] text-gray-400 font-bold">${sub}</div>` : ''}</div>`;
+  el.innerHTML = `<div class="text-xs font-bold text-gray-500 mb-3">${esc(t.nome)} · ${new Date(j.ini).toLocaleString('pt-BR')} até ${new Date(j.fim).toLocaleString('pt-BR')}${j.fim > Date.now() ? ' <span class="text-orange-600">(turno em andamento)</span>' : ''}</div>
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+      ${kp('Entradas', R.ent.length, 'text-tpv', fQ(R.placasE) + ' placas')}${kp('Saídas', R.sai.length, 'text-green-700', fQ(R.placasS) + ' placas')}
+      ${kp('Quebras de FIFO na saída', R.quebras.length, R.quebras.length ? 'text-[#c81e1e]' : 'text-green-700', 'saiu antes de quem ia para a IM primeiro')}
+      ${kp('Tempo médio no buffer', R.medio == null ? '—' : fH(R.medio), 'text-sidebar', R.tempos.length + ' palete(s) que saíram')}
+      ${kp('Quebras de FIFO na sala agora', R.bloqueiosAgora, R.bloqueiosAgora ? 'text-[#c81e1e]' : 'text-green-700')}</div>
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4"><div class="min-w-0" style="height:240px"><canvas id="bp-g-hora"></canvas></div><div class="min-w-0" style="height:240px"><canvas id="bp-g-tempo"></canvas></div></div>
+    ${R.quebras.length ? `<div class="mt-3 text-xs"><b class="text-[#c81e1e]">Saídas fora da ordem:</b> ${R.quebras.slice(0, 12).map(q => `<span class="inline-block bg-red-50 border border-red-200 rounded px-2 py-0.5 m-0.5 font-mono">${esc(q.lpn)} · OP ${esc(q.op)} · ${new Date(q.ts).toLocaleTimeString('pt-BR').slice(0, 5)} (${q.n} na frente)</span>`).join('')}</div>` : ''}`;
+  const hs = Object.keys(R.porHora).map(Number).sort((a, b) => ((a - new Date(j.ini).getHours() + 24) % 24) - ((b - new Date(j.ini).getHours() + 24) % 24));
+  _grafico('bp-g-hora', { type: 'bar', data: { labels: hs.map(h => p2(h) + 'h'), datasets: [
+      { label: 'Entradas', data: hs.map(h => R.porHora[h].e), backgroundColor: '#005b9f', borderRadius: 3 },
+      { label: 'Saídas', data: hs.map(h => R.porHora[h].s), backgroundColor: '#22c55e', borderRadius: 3 }] },
+    options: { maintainAspectRatio: false, animation: false, plugins: { title: { display: true, text: 'Paletes por hora' }, legend: { position: 'bottom', labels: { boxWidth: 12 } } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+  const faixas = [['< 4 h', 0, 4], ['4–8 h', 4, 8], ['8–24 h', 8, 24], ['1–2 d', 24, 48], ['2–5 d', 48, 120], ['> 5 d', 120, 1e9]];
+  _grafico('bp-g-tempo', { type: 'bar', data: { labels: faixas.map(f => f[0]), datasets: [{ label: 'Paletes', data: faixas.map(f => R.tempos.filter(x => x >= f[1] && x < f[2]).length), backgroundColor: ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444', '#991b1b'], borderRadius: 3 }] },
+    options: { maintainAspectRatio: false, animation: false, plugins: { title: { display: true, text: 'Tempo no buffer de quem saiu no turno' }, legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+}
+function _renderCalor() {
+  const el = $('bp-est-calor'); if (!el) return;
+  const S = dbData.sala, oc = ocupacao(), U = usoPorVaga(_est.dias), med = _est.medida;
+  const val = id => U[id] ? (med === 'horas' ? U[id].horas : U[id].paletes) : 0;
+  const ids = oc.vagas.map(v => v.id), max = Math.max(1, ...ids.map(val));
+  const cor = v => { if (!v) return '#f1f5f9'; const t = v / max; return 'hsl(' + Math.round(50 - 50 * t) + ',90%,' + Math.round(88 - 40 * t) + '%)'; };
+  const fmt = v => med === 'horas' ? (v >= 24 ? Math.round(v / 24) + ' d' : Math.round(v) + ' h') : String(v);
+  let h = '<table class="text-[11px] border-separate" style="border-spacing:3px"><tbody>';
+  for (let p = S.posicoes; p >= 1; p--) {
+    h += `<tr><td class="pr-2 font-bold text-gray-500 whitespace-nowrap">POS ${p2(p)}</td>`;
+    for (let r = 1; r <= S.ruas; r++) {
+      const id = idVaga(r, p), v = oc.porId[id];
+      if (!v) { h += `<td style="height:40px;min-width:58px;background:${tipoCelula(S, r, p) === 'corredor' ? '#dbeafe' : '#fff'};border:1px dotted #ddd"></td>`; continue; }
+      const x = val(id);
+      h += `<td title="${esc(nomeVaga(id))} · ${U[id] ? fQ(U[id].paletes) + ' palete(s) · ' + Math.round(U[id].horas) + ' h ocupada' : 'sem uso'}" style="height:40px;min-width:58px;text-align:center;background:${cor(x)};border:1px solid ${v.retrab ? '#a855f7' : '#e2e8f0'};line-height:1.1">
+        <div class="font-mono font-black text-gray-800">${id.replace('-', ' ')}</div><div class="font-bold text-gray-700">${x ? fmt(x) : '—'}</div></td>`;
+    }
+    h += '</tr>';
+  }
+  h += '<tr><td></td>' + Array.from({ length: S.ruas }, (_, i) => `<td class="text-center pt-1 font-bold text-gray-500">Rua ${p2(i + 1)}</td>`).join('') + '</tr></tbody></table>';
+  // total por rua
+  const ruas = Array.from({ length: S.ruas }, (_, i) => { const vs = oc.vagas.filter(v => v.r === i + 1 && !v.retrab); return { r: i + 1, tot: vs.reduce((s, v) => s + val(v.id), 0), n: vs.length }; });
+  const semHist = !(dbData.usoVagas || []).length;
+  el.innerHTML = `${semHist ? '<div class="mb-3 text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded p-2">O histórico de uso começou a ser gravado agora (v8.3). Por enquanto o mapa mostra só os paletes que estão na sala; ele fica completo com o passar dos dias.</div>' : ''}
+    <div class="overflow-x-auto">${h}</div>
+    <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 mt-4"><div class="min-w-0" style="height:220px"><canvas id="bp-g-ruas"></canvas></div>
+    <div class="text-xs text-gray-600 space-y-1">${_dicasCalor(ruas, med)}</div></div>`;
+  _grafico('bp-g-ruas', { type: 'bar', data: { labels: ruas.map(x => 'Rua ' + p2(x.r)), datasets: [{ label: med === 'horas' ? 'Horas ocupada (média por vaga)' : 'Paletes (média por vaga)', data: ruas.map(x => x.n ? +(x.tot / x.n).toFixed(1) : 0), backgroundColor: ruas.map(x => { const m = Math.max(1, ...ruas.map(y => y.n ? y.tot / y.n : 0)); return cor((x.n ? x.tot / x.n : 0) / m * max); }), borderColor: '#94a3b8', borderWidth: 1, borderRadius: 3 }] },
+    options: { maintainAspectRatio: false, animation: false, plugins: { title: { display: true, text: 'Uso médio por rua' }, legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+}
+function _dicasCalor(ruas, med) {
+  const m = ruas.filter(x => x.n).map(x => ({ r: x.r, v: x.tot / x.n }));
+  if (!m.some(x => x.v)) return '<div class="text-gray-400">Sem uso no período.</div>';
+  const ord = m.slice().sort((a, b) => b.v - a.v), mais = ord.slice(0, 3), menos = ord.slice(-3).reverse();
+  return `<div><b class="text-[#c81e1e]">Mais usadas:</b> ${mais.map(x => 'Rua ' + p2(x.r)).join(', ')}</div>
+    <div><b class="text-tpv">Menos usadas:</b> ${menos.map(x => 'Rua ' + p2(x.r)).join(', ')}</div>
+    <div class="text-gray-400 pt-1">Ruas pouco usadas podem virar área de retrabalho/estoque; ruas muito usadas perto da porta são boas para paletes que saem rápido.</div>`;
+}
+async function salvarAlertaHoras(v) {
+  const n = Math.round(Number(v));
+  if (!(n >= 1 && n <= 720)) { msgTopo('Digite de 1 a 720 horas.', true); return; }
+  dbData.sala.alertaHoras = n; dbData.sala.atualizadoEm = Date.now();
+  registrarLog('ALERTA_HORAS', 'Alerta de palete parado: ' + n + ' h');
+  await salvarBanco(); _avisados.clear(); _conferirVelhos._ok = false; _conferirVelhos();
+  msgTopo('Alerta ajustado para ' + n + ' horas.'); renderEstrat(); sala3d.atualizar(true);
+}
+function editarTurnos() {
+  const txt = prompt('Horários dos turnos (um por linha: nome;início;fim)\nEx.: 1º turno;06:00;14:00', turnos().map(t => t.nome + ';' + t.ini + ';' + t.fim).join('\n'));
+  if (txt == null) return;
+  const novos = txt.split(/\n|\|/).map(l => l.split(';').map(x => x.trim())).filter(a => a[0] && /^\d{1,2}:\d{2}$/.test(a[1] || '') && /^\d{1,2}:\d{2}$/.test(a[2] || ''))
+    .map(([nome, ini, fim]) => ({ nome, ini: ini.padStart(5, '0'), fim: fim.padStart(5, '0') }));
+  if (!novos.length) { msgTopo('Formato inválido. Use: nome;06:00;14:00', true); return; }
+  dbData.sala.turnos = novos; dbData.sala.atualizadoEm = Date.now();
+  registrarLog('TURNOS', novos.map(t => t.nome + ' ' + t.ini + '-' + t.fim).join(' | '));
+  salvarBanco(); _est.turno = 0; renderEstrat();
+}
+/* abre uma janela só com o relatório do turno (texto + gráficos) para imprimir ou salvar em PDF */
+function imprimirTurno() {
+  const box = $('bp-est-turno'); if (!box) return;
+  const c = box.cloneNode(true);
+  ['bp-g-hora', 'bp-g-tempo'].forEach(id => { const o = $(id), n = c.querySelector('#' + id); if (o && n) { const img = document.createElement('img'); img.src = o.toDataURL('image/png'); img.style.width = '100%'; n.replaceWith(img); } });
+  const w = window.open('', '_blank'); if (!w) { msgTopo('O navegador bloqueou a janela de impressão.', true); return; }
+  const css = [...document.querySelectorAll('style')].map(s => s.outerHTML).join('');
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Relatório do turno · Buffer Control</title>${css}<style>body{font-family:Arial,sans-serif;padding:20px;color:#021326}</style></head>
+    <body><h2 style="font-size:20px;font-weight:900;margin-bottom:6px">Buffer Control · Relatório do turno</h2><div style="font-size:11px;color:#666;margin-bottom:12px">Gerado em ${new Date().toLocaleString('pt-BR')} por ${esc(usuarioLogado ? usuarioLogado.usuario : '')}</div>${c.innerHTML}</body></html>`);
+  w.document.close(); setTimeout(() => { w.focus(); w.print(); }, 400);
+}
+const _renderTudoV83 = renderTudo;
+renderTudo = function (auto) {
+  _renderTudoV83(auto);
+  try { _conferirVelhos(); } catch (e) { console.warn('Alerta de horas:', e); }
+};
+Object.assign(window.BP, { buscarPalete, salvarAlertaHoras, editarTurnos, imprimirTurno, renderEstrat,
+  estTurno: i => { _est.turno = Number(i) || 0; _renderTurno(); },
+  estDia: v => { if (v) { _est.dia = v; _renderTurno(); } },
+  estCalor: (k, v) => { _est[k] = k === 'dias' ? Number(v) : v; _renderCalor(); } });
+
 /* a aba Assinatura do Alimentador não é mais usada (os registros antigos continuam no Relatório) */
 function _tirarAssinatura() { ['nav-ASSINATURA', 'aba-ASSINATURA'].forEach(id => { const e = $(id); if (e) e.remove(); }); }
 /* "Leitura de Palete": ao clicar no menu abre em TELA CHEIA para o operador */
@@ -2299,6 +2717,7 @@ function _iniciar() {
   _ajustarLeitura();
   _montarAbaSala();
   _montarAbaPerm();
+  _montarAbaEstrat();
   _montarCardControle();
   _enxugarVagas();
   _iniciado = true;

@@ -18,6 +18,7 @@ Controlar a entrada e a saída de magazines (racks condutivos com placas SMD) na
 - Aging, dashboards, assinatura do alimentador, log e backups.
 
 ## Versão atual
+- **v8.3** (17/10/2026) — **alerta de palete parado** há mais de X horas (cor "envelhecimento (horas)" do verde ao vermelho aos poucos, faixa na sala, aviso no canto, TV); **Modo TV em páginas** (troca a cada 20 s: sala 3D → indicadores → próximos a sair); **busca rápida** de OP/LPN na aba da sala (câmera vai até o palete, realce igual ao "Guardar o palete"); nova aba **Estratégia** (só Key User): previsão de lotação, relatório do turno com gráficos e mapa de calor de uso das vagas. Correções do roteiro de testes: tela Guardar em tela cheia, `#tv` sai da URL ao fechar a TV, menu sem piscar, painel "Próximos a sair" sem rolagem horizontal, rotação 3D pela metade, texto "paletes sem plano de IM juntos".
 - **v8.2** (17/10/2026) — aba **Buffer × Plano IM** em largura total, sem rolagem horizontal e com rolagem vertical até o fim da tela; sala 3D: "◀ CORREDOR · SAÍDA" não corta mais, cada vaga mostra **Pxx / Rxx** no chão, parede da porta 25% mais perto, janelas viraram **vãos abertos** (3 no fundo, 1 na parede da porta, 0 na parede paralela), tela "Guardar o palete" escurece a sala em volta da vaga indicada, vagas de **retrabalho podem receber palete por escolha manual**.
 - **v8.1** (16/10/2026) — leitura por **palete**, tela "Guardar o palete" com 3D, nova regra de vagas (fundo primeiro), aba **Acessos e Logins**, sala 3D sem porta e com janelas, Modo TV com câmera fixa, Vista 3D em tela cheia. Aba Assinatura do Alimentador removida.
 - **v8.0** — integrada à Plataforma MMT + módulo PRO (`buffer_pro.js`).
@@ -46,7 +47,7 @@ Controlar a entrada e a saída de magazines (racks condutivos com placas SMD) na
     sistema/usuarios.json            usuários, excluídos, alimentadores
     sistema/log.json                 auditoria (últimos 5000)
     sistema/config.json              configurações
-    sistema/outros.json              qualquer chave nova não mapeada (hoje: "acessos")
+    sistema/outros.json              qualquer chave nova não mapeada (hoje: "acessos" e "usoVagas")
   backup/
     json/AAAA-MM/banco_AAAA-MM-DD_HHh.json
     excel/AAAA-MM/Backup_BufferControl_AAAA-MM-DD_HHh.xlsx
@@ -134,8 +135,20 @@ Arquivos da Plataforma usados (não pertencem a este sistema):
 - Log com filtros (usuário, ação, período, texto) e exportação para Excel.
 - Dados: `dbData.acessos` (vai para `sistema/outros.json`), mescla entre PCs pelo `atualizadoEm` mais recente; usuários pelo `atualizadoEm` (regra original).
 
+**Alerta de horas, TV, busca e Estratégia** (v8.3)
+- Alerta de palete parado: `sala.alertaHoras` (padrão **24 h**, o Key User muda na aba Estratégia). Conta desde a última entrada do LPN.
+  - Cor "envelhecimento (horas)" no seletor da sala: verde (0 h) → amarelo (metade) → vermelho (X h ou mais), sem degraus; o 3D é refeito a cada 10 min nesse modo.
+  - Faixa vermelha na aba da sala com os paletes velhos (clicar = busca); aviso no canto da tela quando um palete passa do limite (uma vez por palete; ao abrir o sistema não avisa os que já estavam velhos); linha no "Atenção" e card na página de indicadores da TV.
+- Modo TV em páginas: `TV_PAGINAS` (Sala 3D · Indicadores · Próximos a sair), troca a cada `TV_TROCA_MS` = 20 s; bolinhas no canto mostram a página.
+- Busca rápida (aba da sala): LPN exato → OP (7 dígitos) → parte do LPN (4+). Vários paletes da OP: vai no que sai primeiro e avisa as outras vagas. Esc / × limpa. Realce = `sala3d.destacar(vaga)` (seta, feixe, foco de luz e sala ~50% mais escura, igual à tela Guardar).
+- Aba **Estratégia** (`ESTRAT`, só Key User, igual à `PERM`; não entra na tabela de perfis):
+  - **Previsão de lotação** (14 dias): paletes de hoje + saldo do plano SMT com data (÷ palete médio dos últimos 30 dias) − saídas no dia da IM. OP atrasada conta como hoje; sem plano de IM não sai. Avisa o dia em que lota (≥ 100%) ou passa de 90%.
+  - **Relatório do turno**: entradas, saídas, quebras de FIFO na saída (saiu enquanto havia palete com IM em dia anterior), tempo médio no buffer, quebras na sala agora, gráficos por hora e por faixa de tempo, botão Imprimir/PDF. Turnos em `sala.turnos` (padrão 06–14, 14–22, 22–06; botão "Horários").
+  - **Mapa de calor**: horas ocupada ou nº de paletes por vaga (7/30/90 dias) + uso médio por rua.
+- Histórico de uso: `dbData.usoVagas` = `{ id, lpn, op, vaga, de, ts }` gravado em `gravarVaga` a cada mudança de vaga (guardar, trocar, sair). Mescla append-only por id (igual às leituras), guarda 120 dias. Começou na v8.3: antes disso o mapa só conta os paletes que estavam na sala.
+
 **Dados e backup**
-- Mesclagem entre PCs: leituras/logs/assinaturas/ops são append-only por id; `vagas` vence pelo mais recente (`em`); `sala` pelo `atualizadoEm`; `vinculo` pelo `ts`.
+- Mesclagem entre PCs: leituras/logs/assinaturas/ops/usoVagas são append-only por id; `vagas` vence pelo mais recente (`em`); `sala` pelo `atualizadoEm`; `vinculo` pelo `ts`.
 - Backup automático a cada **3 h** (janelas 00h, 03h, …, 21h), em JSON + Excel. Qualquer PC aberto grava a janela se ela ainda não existir.
 - Apaga backups com mais de **14 dias**: a idade sai do nome do arquivo e ele só apaga arquivos com esse padrão de nome.
 - Registros de vaga de LPN que já saiu há mais de 30 dias são removidos ao abrir.
@@ -187,19 +200,22 @@ Arquivos da Plataforma usados (não pertencem a este sistema):
 - Não apagar nada em `backup/` fora da rotina de 14 dias.
 
 ## Pendências e bugs conhecidos
+- **Confirmado pelo usuário (17/10/2026) — não mexer:** R02/R06/R07-P06 continuam "sem vaga"; R11-P05 é palete avulso; FIFO com Posição 04 = frente; IM atrasada/hoje/amanhã prefere vaga de 1 só (P06).
+- **A confirmar (v8.3):**
+  - Alerta de palete parado: 24 h é o valor certo? (muda na aba Estratégia)
+  - Horários dos turnos (padrão 06–14, 14–22, 22–06).
+  - Previsão de lotação usa o palete médio das entradas dos últimos 30 dias; confirmar se a data do plano SMT é a data em que o palete chega ao buffer.
 - **A confirmar com o usuário:**
-  - R02/R06/R07-P06 são mesmo "sem vaga"?
-  - R11-P05 entra na fila da Rua 11 ou é palete avulso (hoje é avulso)?
-  - O sentido FIFO (Posição 04 = frente) está correto?
   - Medidas reais da sala (hoje estimadas: vaga 1,45 × 1,30 m; corredor 2,2 m).
 - **A confirmar (v8.2):**
   - Na parede da porta ficou a janela do lado da Posição 01 (a mais longe da porta); do outro lado da porta (Posição 06) não há janela.
   - "Pxx / Rxx" só foi colocado no chão do 3D; o mapa 2D continua mostrando "livre".
   - Palete guardado no retrabalho não entra no FIFO de nenhuma fila (cada vaga de retrabalho é fila própria).
 - **A confirmar (v8.1):**
-  - Palete com IM atrasada/hoje/amanhã vai de preferência para vaga de 1 só (P06) — confirmar se é o desejado ou se deve ir sempre ao fundo de uma rua.
   - Placas por magazine (só para o desenho 3D) = 50 por padrão.
 - **Testes:** v8.0 testado com Plataforma simulada. v8.1 testado em Chrome headless com Plataforma falsa em memória (cópia dos JSON de `dados/`, nada gravado nos arquivos reais): leitura de entrada e saída, validações, tela Guardar e troca manual, sala/TV/tela cheia, retrabalho, layout, acessos (operador novo, bloqueado, personalizado, perfil antigo). Falta validar na Plataforma real, na rede, e no PC/TV da sala.
+  - v8.3 testado do mesmo jeito (1280/1400/1700): tela Guardar em tela cheia (página, iframe e elemento interno), saída com qtd. preenchida, `#tv` → fechar → F5, menu, alerta de horas (faixa, cor, legenda, TV), busca (OP, LPN, inexistente), TV trocando as 3 páginas a cada 20 s, aba Estratégia (previsão, turno com gráficos, mapa de calor), Estratégia escondida para Guardião, `usoVagas` gravado no banco, sem erros no console. Não testado: impressão (janela do navegador), aviso no canto com o tempo passando de verdade, e tudo na Plataforma real/rede/TV.
+  - Item "Próximos a sair não atualiza na Saída" (roteiro 17/10) não reproduziu; suspeita: outro LPN antigo na mesma vaga.
   - v8.2 testado do mesmo jeito (1400 × 800 e 1700 × 950): aba Buffer × Plano IM sem rolagem horizontal, sala 3D (vista padrão e de cima), tela Guardar com vaga normal e com vaga de retrabalho (confirmação, palete real no lugar do de retrabalho, KPIs sem contar o retrabalho, palete de retrabalho volta quando o palete sai), sem erros no console. Não testado: Modo TV e saída real por leitura de etiqueta (a saída foi simulada movendo o palete para outra vaga).
 - **Internet:** sem internet, o 3D não carrega (só o mapa 2D funciona) e a tela fica sem formatação (Tailwind via CDN).
 - **Dados antigos:** magazines que já estavam no buffer antes do módulo PRO ficam "sem vaga" até clicar em **"Alocar sem vaga"**.

@@ -187,17 +187,18 @@ Arquivos da Plataforma usados (não pertencem a este sistema):
 - Não apagar nada em `backup/` fora da rotina de 14 dias.
 
 ## Pendências e bugs conhecidos
+- **Confirmado pelo usuário (17/10/2026) — não mexer:**
+  - R02/R06/R07-P06 continuam "sem vaga" ("deixa do jeito que tá, está funcionando").
+  - R11-P05 continua palete avulso (fila de 1 vaga).
+  - Sentido FIFO correto: Posição 04 = frente.
+  - IM atrasada/hoje/amanhã continua preferindo vaga de 1 só (P06 / frente do corredor).
 - **A confirmar com o usuário:**
-  - R02/R06/R07-P06 são mesmo "sem vaga"?
-  - R11-P05 entra na fila da Rua 11 ou é palete avulso (hoje é avulso)?
-  - O sentido FIFO (Posição 04 = frente) está correto?
   - Medidas reais da sala (hoje estimadas: vaga 1,45 × 1,30 m; corredor 2,2 m).
 - **A confirmar (v8.2):**
   - Na parede da porta ficou a janela do lado da Posição 01 (a mais longe da porta); do outro lado da porta (Posição 06) não há janela.
   - "Pxx / Rxx" só foi colocado no chão do 3D; o mapa 2D continua mostrando "livre".
   - Palete guardado no retrabalho não entra no FIFO de nenhuma fila (cada vaga de retrabalho é fila própria).
 - **A confirmar (v8.1):**
-  - Palete com IM atrasada/hoje/amanhã vai de preferência para vaga de 1 só (P06) — confirmar se é o desejado ou se deve ir sempre ao fundo de uma rua.
   - Placas por magazine (só para o desenho 3D) = 50 por padrão.
 - **Testes:** v8.0 testado com Plataforma simulada. v8.1 testado em Chrome headless com Plataforma falsa em memória (cópia dos JSON de `dados/`, nada gravado nos arquivos reais): leitura de entrada e saída, validações, tela Guardar e troca manual, sala/TV/tela cheia, retrabalho, layout, acessos (operador novo, bloqueado, personalizado, perfil antigo). Falta validar na Plataforma real, na rede, e no PC/TV da sala.
   - v8.2 testado do mesmo jeito (1400 × 800 e 1700 × 950): aba Buffer × Plano IM sem rolagem horizontal, sala 3D (vista padrão e de cima), tela Guardar com vaga normal e com vaga de retrabalho (confirmação, palete real no lugar do de retrabalho, KPIs sem contar o retrabalho, palete de retrabalho volta quando o palete sai), sem erros no console. Não testado: Modo TV e saída real por leitura de etiqueta (a saída foi simulada movendo o palete para outra vaga).

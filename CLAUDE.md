@@ -18,6 +18,7 @@ Controlar a entrada e a saída de magazines (racks condutivos com placas SMD) na
 - Aging, dashboards, assinatura do alimentador, log e backups.
 
 ## Versão atual
+- **v8.4** (17/10/2026) — **bloquear/reservar vaga** (Key User, clicando na vaga vazia); **linha do tempo do LPN** (Relatório › LPNs da OP, busca da sala e clique no palete), com Imprimir; **ocupação ao longo dos dias** na Estratégia (4/8/12 semanas + meta); **PDF do turno** (botão "Gerar PDF" e "⚙ Automático" salvando em `Relatórios\AAAA-MM\`); **leitura pelo celular** (`#celular`).
 - **v8.3** (17/10/2026) — **alerta de palete parado** há mais de X horas (cor "envelhecimento (horas)" do verde ao vermelho aos poucos, faixa na sala, aviso no canto, TV); **Modo TV em páginas** (troca a cada 20 s: sala 3D → indicadores → próximos a sair); **busca rápida** de OP/LPN na aba da sala (câmera vai até o palete, realce igual ao "Guardar o palete"); nova aba **Estratégia** (só Key User): previsão de lotação, relatório do turno com gráficos e mapa de calor de uso das vagas. Correções do roteiro de testes: tela Guardar em tela cheia, `#tv` sai da URL ao fechar a TV, menu sem piscar, painel "Próximos a sair" sem rolagem horizontal, rotação 3D pela metade, texto "paletes sem plano de IM juntos".
 - **v8.2** (17/10/2026) — aba **Buffer × Plano IM** em largura total, sem rolagem horizontal e com rolagem vertical até o fim da tela; sala 3D: "◀ CORREDOR · SAÍDA" não corta mais, cada vaga mostra **Pxx / Rxx** no chão, parede da porta 25% mais perto, janelas viraram **vãos abertos** (3 no fundo, 1 na parede da porta, 0 na parede paralela), tela "Guardar o palete" escurece a sala em volta da vaga indicada, vagas de **retrabalho podem receber palete por escolha manual**.
 - **v8.1** (16/10/2026) — leitura por **palete**, tela "Guardar o palete" com 3D, nova regra de vagas (fundo primeiro), aba **Acessos e Logins**, sala 3D sem porta e com janelas, Modo TV com câmera fixa, Vista 3D em tela cheia. Aba Assinatura do Alimentador removida.
@@ -48,6 +49,7 @@ Controlar a entrada e a saída de magazines (racks condutivos com placas SMD) na
     sistema/log.json                 auditoria (últimos 5000)
     sistema/config.json              configurações
     sistema/outros.json              qualquer chave nova não mapeada (hoje: "acessos" e "usoVagas")
+  Relatórios/AAAA-MM/DD-MM_<turno>.pdf   PDF do turno (manual ou automático, v8.4)
   backup/
     json/AAAA-MM/banco_AAAA-MM-DD_HHh.json
     excel/AAAA-MM/Backup_BufferControl_AAAA-MM-DD_HHh.xlsx
@@ -147,6 +149,16 @@ Arquivos da Plataforma usados (não pertencem a este sistema):
   - **Mapa de calor**: horas ocupada ou nº de paletes por vaga (7/30/90 dias) + uso médio por rua.
 - Histórico de uso: `dbData.usoVagas` = `{ id, lpn, op, vaga, de, ts }` gravado em `gravarVaga` a cada mudança de vaga (guardar, trocar, sair). Mescla append-only por id (igual às leituras), guarda 120 dias. Começou na v8.3: antes disso o mapa só conta os paletes que estavam na sala.
 
+**Vagas travadas, linha do tempo, ocupação, PDF e celular** (v8.4)
+- `sala.travas[id] = { tipo: 'bloq' | 'reserva', op, motivo, por, em }` — só Key User, pela janela da vaga vazia (clique no 3D ou no mapa 2D): "Bloquear (manutenção)", "Reservar para OP…", "Liberar a vaga". Vaga ocupada não pode ser travada.
+  - Bloqueada: cinza listrado (3D e 2D), nunca sugerida, recusada na tela Guardar, sai do total/livres das KPIs.
+  - Reservada: roxo; é a 1ª sugestão para a OP dela; para outra OP não é sugerida e pede confirmação na tela Guardar. Conta como vaga livre.
+  - Vai junto com o layout (`sala`, mescla pelo `atualizadoEm`); log `VAGA_BLOQUEAR` / `VAGA_RESERVAR` / `VAGA_LIBERAR`.
+- Linha do tempo do LPN (`BP.linhaTempo(lpn)`): entradas/saídas (leituras, com o nome de quem leu), guardado (vaga sugerida ou manual + motivo), trocas de vaga, saída dentro/fora do FIFO (quantos na frente). Abre pelo LPN na janela "LPNs da OP" do Relatório, pelo botão "Ver histórico" da busca da sala e pelo botão "Histórico" da janela da vaga. Botão Imprimir. `usoVagas` ganhou `auto`, `motivo` e `por` (registros da v8.3 não têm).
+- Ocupação ao longo dos dias (Estratégia): refeita a partir das leituras (foto de hora em hora), média e pico do dia em % das vagas de hoje, meta tracejada (`sala.metaOcup`, padrão 80%), ocupação média, dia mais cheio e tempo médio no buffer. Não precisa gravar fotos: o passado já aparece.
+- PDF do turno (jsPDF 2.5.1 via cdnjs, carregado só quando precisa): "Gerar PDF" baixa e grava na pasta; "⚙ Automático" (`sala.relAuto`, `relAutoDesde`) gera sozinho os turnos que acabaram nas últimas 20 h e depois de ligar, conferindo a cada minuto; se o arquivo já existe (outro PC gerou), pula. Só funciona com algum PC aberto (ex.: o da TV).
+- Celular: `#celular` ou `?celular` na URL. Tela escura só de leitura (ENTRADA/SAÍDA, um campo, OK), alimenta a MESMA barra de leitura (`avancarPasso`, mesmas validações), mostra a vaga em letras gigantes no lugar da tela Guardar; não carrega a sala 3D; esconde o menu. Precisa do login da Plataforma e de acesso à aba Leitura.
+
 **Dados e backup**
 - Mesclagem entre PCs: leituras/logs/assinaturas/ops/usoVagas são append-only por id; `vagas` vence pelo mais recente (`em`); `sala` pelo `atualizadoEm`; `vinculo` pelo `ts`.
 - Backup automático a cada **3 h** (janelas 00h, 03h, …, 21h), em JSON + Excel. Qualquer PC aberto grava a janela se ela ainda não existir.
@@ -201,6 +213,10 @@ Arquivos da Plataforma usados (não pertencem a este sistema):
 
 ## Pendências e bugs conhecidos
 - **Confirmado pelo usuário (17/10/2026) — não mexer:** R02/R06/R07-P06 continuam "sem vaga"; R11-P05 é palete avulso; FIFO com Posição 04 = frente; IM atrasada/hoje/amanhã prefere vaga de 1 só (P06).
+- **A confirmar (v8.4):**
+  - Reserva de vaga conta como "livre" nas KPIs (só a bloqueada desconta) e é sugerida para a própria OP — confirmar.
+  - Celular e `#tv`: o sufixo na URL ainda não foi validado dentro do iframe da Plataforma; QR na parede depende do endereço da Plataforma na rede.
+  - PDF automático: pasta `Relatórios` dentro de `8 - Buffer Control`; e-mail automático fica para depois.
 - **A confirmar (v8.3):**
   - Alerta de palete parado: 24 h é o valor certo? (muda na aba Estratégia)
   - Horários dos turnos (padrão 06–14, 14–22, 22–06).
@@ -214,6 +230,7 @@ Arquivos da Plataforma usados (não pertencem a este sistema):
 - **A confirmar (v8.1):**
   - Placas por magazine (só para o desenho 3D) = 50 por padrão.
 - **Testes:** v8.0 testado com Plataforma simulada. v8.1 testado em Chrome headless com Plataforma falsa em memória (cópia dos JSON de `dados/`, nada gravado nos arquivos reais): leitura de entrada e saída, validações, tela Guardar e troca manual, sala/TV/tela cheia, retrabalho, layout, acessos (operador novo, bloqueado, personalizado, perfil antigo). Falta validar na Plataforma real, na rede, e no PC/TV da sala.
+  - v8.4 testado do mesmo jeito: bloquear/reservar (KPIs, sugestão, recusa/confirmação na tela Guardar, 3D e 2D), linha do tempo pelos 3 caminhos (entrada sugerida → troca → saída FIFO), gráfico de ocupação com 6 semanas de histórico, PDF manual (57 KB, conferido como imagem) e automático (gerou os 3 turnos encerrados, sem duplicar), celular em 390 × 844 (entrada, vaga gigante, LPN inválido, saída com qtd. preenchida, 3D não carregou), regressão (saída, tela cheia em iframe, `#tv`), sem erros no console. Não testado: impressão real, PDF na pasta da rede, celular de verdade com leitor/câmera.
   - v8.3 testado do mesmo jeito (1280/1400/1700): tela Guardar em tela cheia (página, iframe e elemento interno), saída com qtd. preenchida, `#tv` → fechar → F5, menu, alerta de horas (faixa, cor, legenda, TV), busca (OP, LPN, inexistente), TV trocando as 3 páginas a cada 20 s, aba Estratégia (previsão, turno com gráficos, mapa de calor), Estratégia escondida para Guardião, `usoVagas` gravado no banco, sem erros no console. Não testado: impressão (janela do navegador), aviso no canto com o tempo passando de verdade, e tudo na Plataforma real/rede/TV.
   - Item "Próximos a sair não atualiza na Saída" (roteiro 17/10) não reproduziu; suspeita: outro LPN antigo na mesma vaga.
   - v8.2 testado do mesmo jeito (1400 × 800 e 1700 × 950): aba Buffer × Plano IM sem rolagem horizontal, sala 3D (vista padrão e de cima), tela Guardar com vaga normal e com vaga de retrabalho (confirmação, palete real no lugar do de retrabalho, KPIs sem contar o retrabalho, palete de retrabalho volta quando o palete sai), sem erros no console. Não testado: Modo TV e saída real por leitura de etiqueta (a saída foi simulada movendo o palete para outra vaga).

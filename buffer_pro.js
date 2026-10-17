@@ -1532,9 +1532,9 @@ const sala3d = (function () {
   /* trava da câmera por modo: a tela cheia (livre) solta tudo */
   function configurarControles() {
     if (modo === 'livre') {
-      Object.assign(controls, { minDistance: 0.3, maxDistance: 90, maxPolarAngle: Math.PI / 2 - 0.02, enablePan: true, screenSpacePanning: false, panSpeed: 1.2, rotateSpeed: 0.8, zoomSpeed: 1.1 });
+      Object.assign(controls, { minDistance: 0.3, maxDistance: 90, maxPolarAngle: Math.PI / 2 - 0.02, enablePan: true, screenSpacePanning: false, panSpeed: 1.2, rotateSpeed: 0.4, zoomSpeed: 1.1 });
     } else {
-      Object.assign(controls, { minDistance: 3, maxDistance: 60, maxPolarAngle: Math.PI / 2.08, enablePan: true, screenSpacePanning: true, panSpeed: 1, rotateSpeed: 1, zoomSpeed: 1 });
+      Object.assign(controls, { minDistance: 3, maxDistance: 60, maxPolarAngle: Math.PI / 2.08, enablePan: true, screenSpacePanning: true, panSpeed: 1, rotateSpeed: 0.5, zoomSpeed: 1 });
     }
   }
   function tip(e, d) {

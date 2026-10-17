@@ -1239,6 +1239,8 @@ function abrirTV() {
 function fecharTV() {
   const t = $('bp-tv'); if (t) t.classList.add('hidden');
   try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+  // tira o #tv da URL (sem recarregar) para o F5 não voltar sozinho para o Modo TV
+  if (/^#tv\b/i.test(location.hash)) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
   _remontar3D();
 }
 function renderTV() {

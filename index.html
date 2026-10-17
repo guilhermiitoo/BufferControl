@@ -257,12 +257,12 @@ main [style*="color: #9"]:not(main :is([class*="bg-slate-8"],[class*="bg-gray-8"
         <nav class="flex-1 overflow-y-auto py-6 space-y-1 relative">
             <div class="px-6 mb-2 text-xs font-bold text-gray-500 uppercase tracking-widest">Operação</div>
             <button onclick="mudarAba('LEITURA')" id="nav-LEITURA" class="nav-item active w-full flex items-center px-6 py-3.5 text-sm text-left outline-none">
-                <i data-lucide="scan-line" class="w-5 h-5 mr-3 opacity-80"></i> Leitura de Magazine
+                <i data-lucide="scan-line" class="w-5 h-5 mr-3 opacity-80"></i> Leitura de Palete
             </button>
             <button onclick="mudarAba('RELATORIO')" id="nav-RELATORIO" class="nav-item w-full flex items-center px-6 py-3.5 text-sm text-left outline-none">
                 <i data-lucide="clipboard-list" class="w-5 h-5 mr-3 opacity-80"></i> Relatório de Leituras
             </button>
-            <button onclick="mudarAba('ASSINATURA')" id="nav-ASSINATURA" class="nav-item w-full flex items-center px-6 py-3.5 text-sm text-left outline-none">
+            <button onclick="mudarAba('ASSINATURA')" id="nav-ASSINATURA" style="display:none" class="nav-item w-full flex items-center px-6 py-3.5 text-sm text-left outline-none">
                 <i data-lucide="pen-tool" class="w-5 h-5 mr-3 opacity-80"></i> Assinatura do Alimentador
             </button>
             <button onclick="mudarAba('AGING')" id="nav-AGING" class="nav-item w-full flex items-center px-6 py-3.5 text-sm text-left outline-none">
@@ -296,7 +296,7 @@ main [style*="color: #9"]:not(main :is([class*="bg-slate-8"],[class*="bg-gray-8"
         <!-- ===== ABA: LEITURA DE MAGAZINE ===== -->
         <div id="aba-LEITURA" class="tab-content active modo-entrada w-full mx-auto max-w-6xl">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-sidebar flex items-center"><i data-lucide="scan-line" class="mr-2 text-tpv"></i> Leitura de Magazine</h2>
+                <h2 class="text-2xl font-bold text-sidebar flex items-center"><i data-lucide="scan-line" class="mr-2 text-tpv"></i> Leitura de Palete</h2>
                 <span id="modo-sub" class="text-sm font-medium text-gray-500">Entrada — Expedição MMT</span>
             </div>
 

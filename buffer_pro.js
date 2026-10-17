@@ -857,12 +857,21 @@ function abrirGuardar(lpn, novo) {
     document.body.appendChild(g);
     document.addEventListener('keydown', _teclaGuardar, true);
   }
+  _noTopoTelaCheia(g);
   g.classList.remove('hidden');
   const inp = $('barra-input'); if (inp) inp.blur();
   renderGuardar();
   sala3d.montarEm($('bp-g-3d'), 'escolha', { lpn, vaga: _guardar.vaga, aoEscolher: escolherNoGuardar });
   icones();
 }
+/* em tela cheia o navegador só mostra o que está DENTRO do elemento em
+   tela cheia: a tela Guardar vai para dentro dele e volta ao body depois */
+function _noTopoTelaCheia(g) {
+  const fs = document.fullscreenElement;
+  const alvo = fs && fs !== document.documentElement && !fs.contains(g) ? fs : (fs ? null : document.body);
+  if (alvo && g.parentNode !== alvo) alvo.appendChild(g);
+}
+document.addEventListener('fullscreenchange', () => { const g = $('bp-guardar'); if (g) _noTopoTelaCheia(g); });
 const guardarAberto = () => !!$('bp-guardar') && !$('bp-guardar').classList.contains('hidden');
 /* mini aviso dentro da tela Guardar (no lugar do confirm do navegador).
    Enter = confirmar · Esc = cancelar. Devolve true/false. */

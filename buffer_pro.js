@@ -700,7 +700,8 @@ function avaliarVagas(item, oc, ignorarLpn) {
           const viz = Math.min(...itens[frente].map(chaveIM));
           const difDias = Math.min(Math.abs(k - viz) / DIA, 30);
           nota = 10 + difDias + gap * 8 - (modeloNaFila ? 3 : 0);
-          motivo = 'Fila da ' + v.rua + ': vai para a IM ' + (difDias < 1 ? 'no mesmo dia' : 'antes') + ' de quem fica atrás' + (modeloNaFila ? ' · mesmo modelo' : '') + '.' + txtGap;
+          motivo = 'Fila da ' + v.rua + ': ' + (item.dataIM == null && viz === chaveIM({}) ? 'paletes sem plano de IM juntos'
+                   : 'vai para a IM ' + (difDias < 1 ? 'no mesmo dia' : 'antes') + ' de quem fica atrás') + (modeloNaFila ? ' · mesmo modelo' : '') + '.' + txtGap;
         } else {
           const so1 = lista.length === 1;
           nota = 45 + gap * 8 + (so1 ? (urgente ? -6 : 3) : (urgente ? 2 : 0));
